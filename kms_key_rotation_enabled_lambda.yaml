@@ -1,0 +1,88 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Lambda remediation to enable KMS key rotation
+Resources:
+  KMSRemediationFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: EnableKMSKeyRotation
+      Runtime: python3.12
+      Role: !GetAtt KMSLambdaExecutionRole.Arn
+      Handler: index.lambda_handler
+      Timeout: 60
+      Code:
+        ZipFile: |
+          import boto3
+          import json
+          def lambda_handler(event, context):
+              kms = boto3.client('kms')
+              key_id = event['InvokingEvent']
+              if 'resourceId' in event['ResourceId']:
+                  key_id = event['ResourceId']
+              elif 'configurationItem' in event:
+                  key_id = json.loads(event['configurationItem'])['resourceId']
+              else:
+                  key_id = json.loads(event['invokingEvent'])['configurationItem']['resourceId']
+              try:
+                  kms.enable_key_rotation(KeyId=key_id)
+                  return {"status": "Rotation enabled", "key": key_id}
+              except Exception as e:
+                  return {"status": "Error", "message": str(e)}
+  KMSLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: KMSLambdaRemediationRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: KMSRotationPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - kms:EnableKeyRotation
+                  - kms:DescribeKey
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+  KMSRotationRemediation:
+    Type: AWS::Config::RemediationConfiguration
+    Properties:
+      ConfigRuleName: kms-key-rotation-enabled
+      TargetType: SSM_DOCUMENT
+      TargetId: AWS-EnableKMSKeyRotation
+      Parameters:
+        ResourceId:
+          ResourceValue:
+            Value: RESOURCE_ID
+      Automatic: true
+      MaximumAutomaticAttempts: 1
+      RetryAttemptSeconds: 60
+
+#Make sure you replatce Targettype and TargetID with your Lambda ARN
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

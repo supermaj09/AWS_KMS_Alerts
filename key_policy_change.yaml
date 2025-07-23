@@ -1,0 +1,32 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Detect KMS key policy changes using CloudTrail and CloudWatch
+Resources:
+  KMSKeyPolicyChangeFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: /aws/cloudtrail/kms
+      FilterPattern: '{ ($.eventName = "PutKeyPolicy") }'
+      MetricTransformations:
+        - MetricValue: "1"
+          MetricNamespace: "KMSMonitoring"
+          MetricName: "KeyPolicyChanged"
+  KMSKeyPolicyChangeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: "KMSKeyPolicyChanged"
+      MetricName: "KeyPolicyChanged"
+      Namespace: "KMSMonitoring"
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+        - !Ref AlarmSNSTopic
+  AlarmSNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: "KMS Key Policy Change Alerts"
+      Subscription:
+        - Protocol: email
+          Endpoint: your-email@example.com
